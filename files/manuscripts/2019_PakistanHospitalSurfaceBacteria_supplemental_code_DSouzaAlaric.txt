@@ -1,0 +1,116 @@
+#20190624
+#D'Souza, Alaric
+
+#example code for cutoff and spatiotemporal calcuations in R
+
+
+
+#start of cutoff for loop
+for(cutoff in cutoffList[[snpvar]]){
+print(cutoff)
+
+
+#make empty edgelist character vector
+allverts<-character()
+#make empty uniqueCliques list
+uniqueCliques<-list()
+
+#make edgelist from distance table based on cutoff
+edgelist<-df[df$distance<=cutoff,c("sample1","sample2","distance")]
+#invert edgelist distance to be consistent with larger weights meaning stronger connection
+edgelist$distance <- 1-(edgelist$distance/max(edgelist$distance))
+#rename columns in edgelist
+colnames(edgelist)<-c("from","to","weight")
+
+#see graphic for visual representation of code in this loop
+while(dim(edgelist)[1]!=0){
+
+#make nodelist from the edgelist samples that met the snp cutoff
+nodelist<-mapping[mapping$Sample%in%sort(unique(c(edgelist$from,edgelist$to))),]
+#rename nodelist columns
+colnames(nodelist)<-c("id",colnames(mapping)[2:ncol(mapping)])
+#build network from edgelist and nodelist
+net<-graph_from_data_frame(d=edgelist,vertices=nodelist,directed=F)
+#find maximal cliques in edgelist cutoff
+cutOffCliques<-maximal.cliques(net,min=2)
+
+#get clique with highest minimum weight
+currClique<-cutOffCliques[order(sapply(cutOffCliques,function(mysub){min(E(induced_subgraph(net,mysub))$weight)}),decreasing=T)[1]]
+
+#set first value in uniqueCliques to the clique with the highest minimum weight
+uniqueCliques<-append(uniqueCliques,list(currClique[[1]]$name))
+
+#set allverts to the first clique that will be added based on minimum weights
+allverts<-c(allverts,currClique[[1]]$name)
+
+#remove used nodes from edgelist
+edgelist<-edgelist[!(edgelist$from%in%allverts | edgelist$to%in%allverts),]
+
+}
+
+#name cliques
+names(uniqueCliques)<-paste0("clique_",1:length(uniqueCliques))
+
+write.table(ldply(uniqueCliques,.fun=as.matrix,.id="clique"),
+          file=paste0(currentOut,curspec,"_cutoff_",as.character(cutoff),"_cliquelist.txt"),
+          sep="\t",
+          quote=F,
+          row.names=F,
+          col.names=c("cliqueID","sample")
+)
+
+
+
+#get combinations of cliques and make into data frame
+cliqueDF<-ldply(lapply(uniqueCliques,function(clq){data.frame(t(combn(clq,2,simplify=T)),stringsAsFactors=F)}))
+
+#rename columns in cliqueDF
+colnames(cliqueDF)<-c("cliques","samp1","samp2")
+#make new column for presence absence of logical
+cliqueDF$value<-TRUE
+#cast df to have clique membership as columns
+wideCliqueDF<-dcast(formula=samp1+samp2~cliques,data=cliqueDF,fill=FALSE,value.var="value")
+#get combined location for sample pairs
+wideCliqueDF$combLocation<-combineStrings(data.frame(samp1=mapping$surfaceCode[match(wideCliqueDF$samp1,mapping$Sample)],
+                                                   samp2=mapping$surfaceCode[match(wideCliqueDF$samp2,mapping$Sample)],
+                                                   stringsAsFactors=F))
+#merge cliquedata with location distance table
+distCalcDF<-merge(df[c("combLocation","TimeDist","SpaceDist")],wideCliqueDF,by="combLocation",all.x=T)
+#set notclonal samples
+distCalcDF[c("samp1","samp2")][is.na(distCalcDF[c("samp1","samp2")])]<-"notclone"
+#set notclonal sample cliques to false
+distCalcDF[is.na(distCalcDF)]<-FALSE
+
+
+#write out data frame for
+#number of samples covered in cliques
+#observed time distance for current cliques
+#observed space distance for current cliques
+write.table(
+data.frame(numCliques=length(names(uniqueCliques)),
+           samplesCovered=length(allverts),
+           observedTimeDist=sum(distCalcDF$TimeDist[apply(distCalcDF[names(uniqueCliques)],MARGIN=1,any)]),
+           observedSpaceDist=sum(distCalcDF$SpaceDist[apply(distCalcDF[names(uniqueCliques)],MARGIN=1,any)])),
+file=paste0(currentOut,curspec,"_cutoff_",as.character(cutoff),"_observed_time_space_dist.txt"),
+sep="\t",
+quote=F,
+row.names=F,
+col.names=T
+)
+
+#write out data frame for
+#expected time distance for current cliques
+#expected space distance for current cliques
+write.table(
+data.frame(
+  expectedTimeDist=sapply(1:10000,function(x){sum(sample(distCalcDF$TimeDist)[apply(distCalcDF[names(uniqueCliques)],MARGIN=1,any)])}),
+  expectedSpaceDist=sapply(1:10000,function(x){sum(sample(distCalcDF$SpaceDist)[apply(distCalcDF[names(uniqueCliques)],MARGIN=1,any)])})),
+file=paste0(currentOut,curspec,"_cutoff_",as.character(cutoff),"_expected_time_space_dist.txt"),
+sep="\t",
+quote=F,
+row.names=F,
+col.names=T
+)
+
+#end of cutoff for loop
+}
