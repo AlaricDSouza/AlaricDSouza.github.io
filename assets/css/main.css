@@ -720,6 +720,17 @@ input, select, textarea {
 
 		}
 
+/* Rounded */
+
+	.rounded {
+		width: 200px;
+		margin: auto;
+	}
+	.rounded img {
+		border-radius: 50%;
+	}
+
+
 /* List */
 
 	ol {
