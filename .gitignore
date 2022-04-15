@@ -1,0 +1,11 @@
+#Files to ignore
+
+images/education/BCH-mobile.svg
+images/education/Boston_Children's_Hospital_logo.svg
+images/education/brand-elements-icons.ppt
+
+#Mac folder file
+.DS_Store
+._.DS_Store
+**/.DS_Store
+**/._.DS_Store
